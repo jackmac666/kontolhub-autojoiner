@@ -1,155 +1,830 @@
--- KONTOL HUB PREMIUM ENCRYPTED v2.0
--- Military-grade protection | Unauthorized access is illegal
--- Generated on: 1432114
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
-local COROzsqP = game:GetService("HttpService")
-local ksDDuVNa = game:GetService("Players")
-local vvZZvdQz = game:GetService("Lighting")
-local MyzcGhXq = game:GetService("CoreGui")
+-- Correct Place ID for "Steal a Brainrot" game
+local PLACE_ID = 109983668079237
 
--- Anti-debug protection layer 1
-local UbrGHiCF = {
-    {"dex", "explorer", "spy", "debug", "console", "hydroxide", "remotespy"},
-    {"scriptware", "synapse", "krnl", "oxygen", "electron", "furk", "coco"},
-    {"getgenv", "getrawmetatable", "getnamecallmethod", "hookmetamethod"},
-    {"firesignal", "fireserver", "firetouchinterest", "fireclickdetector"}
+-- Script state
+local scriptEnabled = false
+local socket = nil
+local reconnectAttempts = 0
+local maxReconnectAttempts = 5
+
+-- Mobile detection and configuration
+local screenSize = workspace.CurrentCamera.ViewportSize
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+local Config = {
+    GUI_NAME = "KontolHubAutojoiner",
+    FRAME_SIZE = isMobile and {
+        WIDTH = math.min(screenSize.X * 0.9, 360),
+        HEIGHT = math.min(screenSize.Y * 0.6, 250)  -- Reduced height to remove empty space
+    } or {
+        WIDTH = 400,  -- Reduced width
+        HEIGHT = 270  -- Reduced height to remove empty space
+    },
+    TEXT_SIZES = isMobile and {
+        TITLE = 16,
+        BUTTON = 12,
+        INPUT = 10,
+        STATUS = 10
+    } or {
+        TITLE = 18,  -- Slightly smaller
+        BUTTON = 13,
+        INPUT = 11,
+        STATUS = 11
+    },
+    COLORS = {
+        PRIMARY = Color3.fromRGB(15, 15, 25),
+        SECONDARY = Color3.fromRGB(25, 25, 40),
+        ACCENT = Color3.fromRGB(255, 50, 50),
+        SUCCESS = Color3.fromRGB(50, 200, 100),
+        DANGER = Color3.fromRGB(255, 80, 80),
+        TEXT = Color3.fromRGB(240, 240, 250),
+        TEXT_DIM = Color3.fromRGB(180, 180, 200)
+    }
 }
 
-local function FxWgWher()
-    -- Environment validation
-    if not game or not game.Players or not game.Workspace then
-        error("Invalid Roblox environment detected")
-    end
-    
-    -- Anti-debug checks
-    for _, category in pairs(UbrGHiCF) do
-        for _, tool in pairs(category) do
-            if _G[tool] or getgenv()[tool] or rawget(_G, tool) then
-                game.Players.LocalPlayer:Kick("Unauthorized debugging tool detected: " .. tool)
-            end
-        end
-    end
-    
-    -- Check for common exploit detection
-    local RUJiZmPy = {
-        "getgc", "debug.getregistry", "debug.getupvalue", "debug.setupvalue",
-        "getconstants", "getprotos", "getstack", "setstack"
+-- Auto-detect local IP addresses
+local function getLocalIPs()
+    local addresses = {
+        "ws://127.0.0.1:8765",
+        "ws://localhost:8765",
+        "ws://10.66.6.16:8765"  -- Add the detected IP from server
     }
     
-    for _, func in pairs(RUJiZmPy) do
-        if rawget(_G, func) then
-            game.Players.LocalPlayer:Kick("Advanced debugging detected")
-        end
-    end
+    return addresses
 end
 
--- Anti-tamper protection
-local nizSmXyS = "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"
-local PDpmAsDI = "UI8UXowDQY32rz2un5LqQ4TLefUFuFy3"
+local addressList = getLocalIPs()
 
--- Integrity check
-local function QjJYmCPf(data)
-    local hash = ""
-    for i = 1, #data do
-        hash = hash .. string.char((string.byte(data, i) * 7 + 3) % 256)
-    end
-    return hash
-end
-
-local KOyNjiOE = QjJYmCPf(nizSmXyS)
-local cdKhVdBK = "79cc8875756c8907"
-
-if #(KOyNjiOE) ~= #12512 then
-    error("Data integrity check failed - tampering detected")
-end
-
--- Multi-layer decryption function
-local function AHgfuGEv()
-    FxWgWher() -- Run security checks
-    
-    local cEbNzkLG = nizSmXyS
-    
-    -- Layer 5: Base64 decode
-    local function STMtmCJE(data)
-        local result = ""
-        local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        data = string.gsub(data, "[^" .. chars .. "=]", "")
-        return (data:gsub(".", function(x)
-            if x == "=" then return "" end
-            local r, f = "", chars:find(x) - 1
-            for i = 6, 1, -1 do
-                r = r .. (f % 2^i - f % 2^(i-1) > 0 and "1" or "0")
-            end
-            return r
-        end):gsub("%d%d%d?%d?%d?%d?%d?%d?", function(x)
-            if #x ~= 8 then return "" end
-            local c = 0
-            for i = 1, 8 do
-                c = c + (x:sub(i, i) == "1" and 2^(8-i) or 0)
-            end
-            return string.char(c)
-        end))
-    end
-    
-    local mLIUnWUm = STMtmCJE(cEbNzkLG)
-    
-    -- Layer 4: Character shifting
-    local mPehCZea = ""
-    for i = 1, #mLIUnWUm do
-        local char = string.sub(mLIUnWUm, i, i)
-        mPehCZea = mPehCZea .. string.char((string.byte(char) - 13) % 256)
-    end
-    
-    -- Layer 3: XOR decryption
-    local SnsRQjSH = ""
-    local key = PDpmAsDI
-    local key_len = #key
-    for i = 1, #mPehCZea do
-        local char = string.sub(mPehCZea, i, i)
-        local key_char = string.sub(key, ((i - 1) % key_len) + 1, ((i - 1) % key_len) + 1)
-        SnsRQjSH = SnsRQjSH .. string.char(string.byte(char) ~ string.byte(key_char))
-    end
-    
-    -- Layer 2: Base64 decode
-    local uWSPwGGz = STMtmCJE(SnsRQjSH)
-    
-    -- Layer 1: Decompress
-    local function lYejKfMz(data)
-        -- Simple decompression simulation (Roblox doesn't have zlib)
-        return data
-    end
-    
-    local COROzsqP = lYejKfMz(uWSPwGGz)
-    
-    -- Final integrity check
-    if not COROzsqP or #COROzsqP < 100 then
-        error("Decryption failed - corrupted data")
-    end
-    
-    return COROzsqP
-end
-
--- Execute with maximum protection
-spawn(function()
-    wait(math.random(50, 200) / 1000) -- Random delay
-    
-    local success, result = pcall(AHgfuGEv)
-    if success and result then
-        local exec_success, exec_err = pcall(function()
-            loadstring(result)()
-        end)
-        
-        if not exec_success then
-            warn("Execution error: " .. tostring(exec_err))
-        end
-    else
-        error("KONTOL HUB: Authentication failed")
+-- Clean up existing GUI
+pcall(function() 
+    if CoreGui:FindFirstChild(Config.GUI_NAME) then
+        CoreGui:FindFirstChild(Config.GUI_NAME):Destroy() 
     end
 end)
 
--- Anti-memory dump protection
-local COROzsqP = nil
-nizSmXyS = nil
-PDpmAsDI = nil
+-- Create GUI
+local gui = Instance.new("ScreenGui", CoreGui)
+gui.Name = Config.GUI_NAME
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
 
-print("🔒 KONTOL HUB PREMIUM - Authenticated successfully")
+-- 🪟 Main Frame
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, Config.FRAME_SIZE.WIDTH, 0, Config.FRAME_SIZE.HEIGHT)
+frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+frame.AnchorPoint = Vector2.new(0.5, 0.5)
+frame.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+frame.BackgroundTransparency = 0.3
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.ZIndex = 1
+
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, isMobile and 12 or 16)
+
+-- Add solid red border effect
+local frameStroke = Instance.new("UIStroke", frame)
+frameStroke.Color = Color3.fromRGB(255, 0, 0)
+frameStroke.Transparency = 0.2
+frameStroke.Thickness = 4
+
+-- Simple red glow pulse (no RGB)
+spawn(function()
+    local cycle = 0
+    while frameStroke.Parent do
+        cycle = cycle + 1
+        
+        -- Simple red pulse effect
+        local pulseIntensity = (math.sin(math.rad(cycle * 4)) + 1) * 0.1 + 0.15
+        frameStroke.Transparency = pulseIntensity
+        
+        -- Keep consistent red color
+        frameStroke.Color = Color3.fromRGB(255, 0, 0)
+        
+        wait(0.05) -- Smooth animation
+    end
+end)
+
+-- 🔝 Top Bar
+local topBar = Instance.new("Frame", frame)
+topBar.Size = UDim2.new(1, 0, 0, isMobile and 35 or 40)
+topBar.BackgroundTransparency = 1  -- Fully transparent - no background
+topBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+topBar.ZIndex = 4
+Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, isMobile and 12 or 16)
+
+-- 🏷️ Expert Simple Title Design
+-- Add full unified background for title extending to edges
+local titleBackground = Instance.new("Frame", frame)  -- Parent to frame instead of topBar
+titleBackground.AnchorPoint = Vector2.new(0, 0)
+titleBackground.Position = UDim2.new(0, 0, 0, 0)  -- Start from top-left corner
+titleBackground.Size = UDim2.new(1, 0, 0, isMobile and 35 or 40)  -- Full width, same height as topBar
+titleBackground.BackgroundColor3 = Color3.fromRGB(20, 20, 20)  -- Dark black base (same as hop server)
+titleBackground.BackgroundTransparency = 0.5  -- More transparent like hop server
+titleBackground.BorderSizePixel = 0
+titleBackground.ZIndex = 3  -- Behind topBar elements
+
+-- Add black gradient to title background (same as hop server)
+local titleGradient = Instance.new("UIGradient", titleBackground)
+titleGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 20, 20)),   -- Dark black
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 40, 40)), -- Medium black
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 60, 60))    -- Light black/gray
+}
+titleGradient.Rotation = 45  -- Diagonal gradient for dynamic effect
+
+-- Add rounded corners only for top to match main frame
+local titleCorner = Instance.new("UICorner", titleBackground)
+titleCorner.CornerRadius = UDim.new(0, isMobile and 12 or 16)
+
+-- Add bottom border line only
+local titleBottomBorder = Instance.new("Frame", titleBackground)
+titleBottomBorder.AnchorPoint = Vector2.new(0, 1)
+titleBottomBorder.Position = UDim2.new(0, 0, 1, 0)  -- Full width from left edge
+titleBottomBorder.Size = UDim2.new(1, 0, 0, 2)  -- 2 pixel height bottom line
+titleBottomBorder.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+titleBottomBorder.BackgroundTransparency = 0.4
+titleBottomBorder.BorderSizePixel = 0
+titleBottomBorder.ZIndex = 4
+
+local title = Instance.new("TextLabel", topBar)
+title.AnchorPoint = Vector2.new(0.5, 0.5)
+title.Position = UDim2.new(0.5, 0, 0.5, 0)
+title.Size = UDim2.new(0.6, 0, 0.8, 0)
+title.Text = isMobile and "☠️ AUTO JOINER ☠️" or "☠️ AUTO JOINER ☠️"
+title.TextColor3 = Color3.fromRGB(255, 0, 0)  -- Pure red text
+title.Font = Enum.Font.GothamBold
+title.TextSize = Config.TEXT_SIZES.TITLE
+title.BackgroundTransparency = 1
+title.ZIndex = 5
+title.TextScaled = isMobile
+title.TextXAlignment = Enum.TextXAlignment.Center
+
+-- No stroke effect - just clean red text
+
+-- ❌ Close Button
+local closeBtn = Instance.new("TextButton", topBar)
+closeBtn.Text = "✖"
+closeBtn.Size = UDim2.new(0, isMobile and 30 or 35, 0, isMobile and 30 or 35)
+closeBtn.Position = UDim2.new(1, isMobile and -35 or -40, 0, 2.5)
+closeBtn.BackgroundColor3 = Config.COLORS.DANGER
+closeBtn.TextColor3 = Config.COLORS.TEXT
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = isMobile and 14 or 16
+closeBtn.ZIndex = 5
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, isMobile and 6 or 8)
+
+-- 📊 Status Display
+local statusLabel = Instance.new("TextLabel", frame)
+statusLabel.Size = UDim2.new(1, -20, 0, isMobile and 24 or 28)
+statusLabel.Position = UDim2.new(0, 10, 0, isMobile and 45 or 50)
+statusLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+statusLabel.BackgroundTransparency = 0.3
+statusLabel.Text = "Ready to connect"
+statusLabel.TextColor3 = Config.COLORS.TEXT_DIM
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextSize = Config.TEXT_SIZES.STATUS
+statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+statusLabel.TextScaled = true
+statusLabel.ZIndex = 2
+Instance.new("UICorner", statusLabel).CornerRadius = UDim.new(0, isMobile and 6 or 8)
+
+-- 📦 Job ID Input Box
+local jobBox = Instance.new("TextBox", frame)
+jobBox.PlaceholderText = "Current Server ID: " .. game.JobId
+jobBox.Size = UDim2.new(1, -20, 0, isMobile and 30 or 35)
+jobBox.Position = UDim2.new(0, 10, 0, isMobile and 78 or 88)
+jobBox.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+jobBox.BackgroundTransparency = 0.3
+jobBox.TextColor3 = Config.COLORS.TEXT
+jobBox.PlaceholderColor3 = Config.COLORS.TEXT_DIM
+jobBox.ClearTextOnFocus = false
+jobBox.Text = ""
+jobBox.Font = Enum.Font.Gotham
+jobBox.TextSize = Config.TEXT_SIZES.INPUT
+jobBox.TextXAlignment = Enum.TextXAlignment.Center
+jobBox.TextScaled = true
+jobBox.ZIndex = 2
+Instance.new("UICorner", jobBox).CornerRadius = UDim.new(0, isMobile and 6 or 8)
+
+-- 🔘 Professional Button Container
+local buttonContainer = Instance.new("Frame", frame)
+buttonContainer.Size = UDim2.new(1, -20, 0, isMobile and 40 or 45)
+buttonContainer.Position = UDim2.new(0, 10, 0, isMobile and 118 or 133)
+buttonContainer.BackgroundTransparency = 1
+buttonContainer.ZIndex = 2
+
+-- Helper function to create professional buttons
+local function createProfessionalButton(text, position, gradientColors, textColor, icon)
+    local button = Instance.new("TextButton", buttonContainer)
+    button.Text = ""
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.Position = position
+    button.BackgroundColor3 = gradientColors[1]
+    button.BackgroundTransparency = 0.1
+    button.BorderSizePixel = 0
+    button.ZIndex = 3
+    
+    -- Professional rounded corners
+    local corner = Instance.new("UICorner", button)
+    corner.CornerRadius = UDim.new(0, isMobile and 12 or 15)
+    
+    -- Gradient effect
+    local gradient = Instance.new("UIGradient", button)
+    gradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, gradientColors[1]),
+        ColorSequenceKeypoint.new(0.5, gradientColors[2]),
+        ColorSequenceKeypoint.new(1, gradientColors[3])
+    }
+    gradient.Rotation = 45
+    
+    -- Professional glow stroke
+    local stroke = Instance.new("UIStroke", button)
+    stroke.Color = gradientColors[2]
+    stroke.Transparency = 0.3
+    stroke.Thickness = 3
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    
+    -- Button content container
+    local contentFrame = Instance.new("Frame", button)
+    contentFrame.Size = UDim2.new(1, 0, 1, 0)
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.ZIndex = 4
+    
+    -- Icon
+    local iconLabel = Instance.new("TextLabel", contentFrame)
+    iconLabel.Size = UDim2.new(0, isMobile and 20 or 24, 1, 0)
+    iconLabel.Position = UDim2.new(0, 10, 0, 0)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.Text = icon
+    iconLabel.TextColor3 = textColor
+    iconLabel.TextSize = isMobile and 16 or 18
+    iconLabel.Font = Enum.Font.GothamBold
+    iconLabel.TextXAlignment = Enum.TextXAlignment.Center
+    iconLabel.TextYAlignment = Enum.TextYAlignment.Center
+    iconLabel.ZIndex = 5
+    
+    -- Text label
+    local textLabel = Instance.new("TextLabel", contentFrame)
+    textLabel.Size = UDim2.new(1, -40, 1, 0)
+    textLabel.Position = UDim2.new(0, 35, 0, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = text
+    textLabel.TextColor3 = textColor
+    textLabel.TextSize = Config.TEXT_SIZES.BUTTON + 1
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextXAlignment = Enum.TextXAlignment.Left
+    textLabel.TextYAlignment = Enum.TextYAlignment.Center
+    textLabel.TextScaled = true
+    textLabel.ZIndex = 5
+    
+    -- Professional hover effects
+    local function createHoverEffect()
+        spawn(function()
+            local originalTransparency = button.BackgroundTransparency
+            local originalStrokeTransparency = stroke.Transparency
+            
+            -- Pulse animation
+            local pulseInfo = TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+            local pulseTween = TweenService:Create(stroke, pulseInfo, {
+                Transparency = 0.1
+            })
+            pulseTween:Play()
+            
+            button.MouseEnter:Connect(function()
+                TweenService:Create(button, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                    BackgroundTransparency = 0.05
+                }):Play()
+                TweenService:Create(stroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                    Transparency = 0.1,
+                    Thickness = 4
+                }):Play()
+            end)
+            
+            button.MouseLeave:Connect(function()
+                TweenService:Create(button, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                    BackgroundTransparency = originalTransparency
+                }):Play()
+                TweenService:Create(stroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                    Transparency = originalStrokeTransparency,
+                    Thickness = 3
+                }):Play()
+            end)
+            
+            button.MouseButton1Down:Connect(function()
+                -- Removed size animation for Discord button stability
+                -- Original: Size = UDim2.new(0.98, 0, 0.95, 0)
+            end)
+            
+            button.MouseButton1Up:Connect(function()
+                -- Removed size animation for Discord button stability  
+                -- Original: Size = UDim2.new(1, 0, 1, 0)
+            end)
+        end)
+    end
+    
+    createHoverEffect()
+    return button
+end
+
+-- Create professional manual hop button (left side)
+local manualHopBtn = createProfessionalButton(
+    "Hop Server", 
+    UDim2.new(0, 0, 0, 0), 
+    {
+        Color3.fromRGB(20, 20, 20),   -- Dark black
+        Color3.fromRGB(40, 40, 40),   -- Medium black  
+        Color3.fromRGB(60, 60, 60)    -- Light black/gray
+    },
+    Color3.fromRGB(255, 255, 255),
+    "🌐"
+)
+-- Resize hop button to take left half
+manualHopBtn.Size = UDim2.new(0.48, 0, 1, 0)
+manualHopBtn.Position = UDim2.new(0, 0, 0, 0)
+-- Make hop button more transparent for black gradient
+manualHopBtn.BackgroundTransparency = 0.5
+
+-- 🔄 Professional Main Toggle Button (right side)
+local toggleButton = Instance.new("TextButton", buttonContainer)
+toggleButton.Text = ""
+toggleButton.Size = UDim2.new(0.48, 0, 1, 0)
+toggleButton.Position = UDim2.new(0.52, 0, 0, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)  -- Dark black for disconnected state
+toggleButton.BackgroundTransparency = 0.5  -- More transparent like hop button
+toggleButton.BorderSizePixel = 0
+toggleButton.ZIndex = 3
+
+-- Professional rounded corners for main button
+local toggleCorner = Instance.new("UICorner", toggleButton)
+toggleCorner.CornerRadius = UDim.new(0, isMobile and 15 or 18)
+
+-- Dynamic gradient for main button
+local toggleGradient = Instance.new("UIGradient", toggleButton)
+toggleGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 20, 20)),   -- Dark black
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 40, 40)), -- Medium black  
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 60, 60))    -- Light black/gray
+}
+toggleGradient.Rotation = 45
+
+-- Professional glow effect for main button
+local toggleStroke = Instance.new("UIStroke", toggleButton)
+toggleStroke.Color = Color3.fromRGB(40, 40, 40)  -- Match hop server stroke color
+toggleStroke.Transparency = 0.2
+toggleStroke.Thickness = 4
+toggleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+-- Main button content container
+local toggleContent = Instance.new("Frame", toggleButton)
+toggleContent.Size = UDim2.new(1, 0, 1, 0)
+toggleContent.BackgroundTransparency = 1
+toggleContent.ZIndex = 4
+
+-- Main button icon
+local toggleIcon = Instance.new("TextLabel", toggleContent)
+toggleIcon.Size = UDim2.new(0, isMobile and 28 or 32, 1, 0)
+toggleIcon.Position = UDim2.new(0, 15, 0, 0)
+toggleIcon.BackgroundTransparency = 1
+toggleIcon.Text = "⚡"
+toggleIcon.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleIcon.TextSize = isMobile and 20 or 24
+toggleIcon.Font = Enum.Font.GothamBold
+toggleIcon.TextXAlignment = Enum.TextXAlignment.Center
+toggleIcon.TextYAlignment = Enum.TextYAlignment.Center
+toggleIcon.ZIndex = 5
+
+-- Main button text
+local toggleText = Instance.new("TextLabel", toggleContent)
+toggleText.Size = UDim2.new(1, -60, 1, 0)
+toggleText.Position = UDim2.new(0, 50, 0, 0)
+toggleText.BackgroundTransparency = 1
+toggleText.Text = "CONNECT"
+toggleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleText.TextSize = Config.TEXT_SIZES.BUTTON + 2
+toggleText.Font = Enum.Font.GothamBold
+toggleText.TextXAlignment = Enum.TextXAlignment.Left
+toggleText.TextYAlignment = Enum.TextYAlignment.Center
+toggleText.TextScaled = true
+toggleText.ZIndex = 5
+
+-- Professional main button animations
+spawn(function()
+    while toggleButton.Parent do
+        -- Dynamic gradient rotation
+        for i = 0, 360, 2 do
+            if not toggleButton.Parent then break end
+            toggleGradient.Rotation = i
+            wait(0.05)
+        end
+    end
+end)
+
+-- Function to update button appearance based on connection state
+local function updateButtonState()
+    if not isConnected then
+        -- Disconnected state - black transparent gradient (same as hop server)
+        toggleGradient.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 20, 20)),   -- Dark black
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 40, 40)), -- Medium black
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 60, 60))    -- Light black/gray
+        }
+        toggleStroke.Color = Color3.fromRGB(40, 40, 40)  -- Match hop server stroke
+        toggleButton.BackgroundTransparency = 0.5  -- Transparent
+        toggleIcon.Text = "⚡"
+        toggleText.Text = "CONNECT"
+    else
+        -- Connected state - green gradient
+        toggleGradient.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(45, 255, 85)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(65, 255, 105)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(85, 255, 125))
+        }
+        toggleStroke.Color = Color3.fromRGB(50, 255, 100)
+        toggleButton.BackgroundTransparency = 0.05  -- Less transparent when connected
+        toggleIcon.Text = "❌"
+        toggleText.Text = "DISCONNECT"
+    end
+end
+
+-- Professional button state management
+spawn(function()
+    local cycle = 0
+    while toggleButton.Parent do
+        cycle = cycle + 1
+        
+        if not isConnected then
+            -- Pulse effect for disconnected state
+            local pulseIntensity = (math.sin(math.rad(cycle * 8)) + 1) * 0.1 + 0.1
+            toggleStroke.Transparency = pulseIntensity
+        else
+            -- Green pulse when connected
+            local greenPulse = (math.sin(math.rad(cycle * 6)) + 1) * 0.05 + 0.15
+            toggleStroke.Transparency = greenPulse
+        end
+        
+        wait(0.04) -- Smooth 25fps animation
+    end
+end)
+
+-- Professional hover effects for main button
+toggleButton.MouseEnter:Connect(function()
+    TweenService:Create(toggleButton, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+        BackgroundTransparency = 0.3
+    }):Play()
+    TweenService:Create(toggleStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+        Thickness = 5
+    }):Play()
+end)
+
+toggleButton.MouseLeave:Connect(function()
+    TweenService:Create(toggleButton, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+        BackgroundTransparency = 0.5
+    }):Play()
+    TweenService:Create(toggleStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+        Thickness = 4
+    }):Play()
+end)
+
+toggleButton.MouseButton1Down:Connect(function()
+    TweenService:Create(toggleButton, TweenInfo.new(0.1, Enum.EasingStyle.Quad), {
+        Size = UDim2.new(0.47, 0, 0.95, 0)
+    }):Play()
+end)
+
+toggleButton.MouseButton1Up:Connect(function()
+    TweenService:Create(toggleButton, TweenInfo.new(0.1, Enum.EasingStyle.Back), {
+        Size = UDim2.new(0.48, 0, 1, 0)
+    }):Play()
+end)
+
+-- ✨ Entrance Animation
+frame.Size = UDim2.new(0, 0, 0, 0)
+frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, Config.FRAME_SIZE.WIDTH, 0, Config.FRAME_SIZE.HEIGHT),
+    Position = UDim2.new(0.5, -Config.FRAME_SIZE.WIDTH/2, 0.5, -Config.FRAME_SIZE.HEIGHT/2)
+}):Play()
+
+-- 💬 Discord Button (centered at bottom)
+local discordButton = createProfessionalButton(
+    "discord.gg/kontolhub", 
+    UDim2.new(0, 0, 0, 0), 
+    {
+        Color3.fromRGB(20, 20, 20),   -- Dark black (same as hop server)
+        Color3.fromRGB(40, 40, 40),   -- Medium black (same as hop server)
+        Color3.fromRGB(60, 60, 60)    -- Light black/gray (same as hop server)
+    },
+    Color3.fromRGB(255, 255, 255),
+    "💬"
+)
+
+-- Position Discord button below the main buttons
+discordButton.Size = UDim2.new(1, -20, 0, isMobile and 38 or 42)
+discordButton.Position = UDim2.new(0, 10, 0, isMobile and 168 or 188)
+discordButton.Parent = frame
+discordButton.ZIndex = 3
+-- Make Discord button more transparent like hop button
+discordButton.BackgroundTransparency = 0.5
+
+-- 📝 Credit Text (bottom left corner) - positioned closer to Discord button
+local creditText = Instance.new("TextLabel", frame)
+creditText.Size = UDim2.new(0.6, 0, 0, isMobile and 20 or 22)
+creditText.Position = UDim2.new(0, 10, 0, isMobile and 215 or 240)
+creditText.BackgroundTransparency = 1
+creditText.Text = "Made By KONTOL HUB ☠️"
+creditText.TextColor3 = Color3.fromRGB(150, 150, 150)  -- Gray color
+creditText.Font = Enum.Font.Gotham
+creditText.TextSize = isMobile and 11 or 13  -- Increased font size for better readability
+creditText.TextXAlignment = Enum.TextXAlignment.Left
+creditText.TextYAlignment = Enum.TextYAlignment.Center
+creditText.ZIndex = 5
+
+-- Discord button click handler - Simple copy to clipboard only
+discordButton.MouseButton1Click:Connect(function()
+    -- KONTOL HUB Discord link for copying
+    local discordText = "discord.gg/kontolhub"
+    local discordInvite = "https://discord.gg/kontolhub"
+    
+    updateStatus("💬 Copying Discord link...")
+    
+    -- Try to copy to clipboard using different methods
+    local copySuccess = false
+    
+    pcall(function()
+        -- Try different clipboard methods
+        if setclipboard then
+            setclipboard(discordInvite)
+            copySuccess = true
+        elseif toclipboard then
+            toclipboard(discordInvite)
+            copySuccess = true
+        elseif Clipboard and Clipboard.set then
+            Clipboard.set(discordInvite)
+            copySuccess = true
+        elseif writeclipboard then
+            writeclipboard(discordInvite)
+            copySuccess = true
+        end
+    end)
+    
+    if copySuccess then
+        updateStatus("✅ Discord link copied!")
+        jobBox.Text = "✅ COPIED: " .. discordText
+    else
+        updateStatus("💬 Manual: " .. discordText)
+        jobBox.Text = "Manual copy: " .. discordInvite
+    end
+    
+    -- Clear message after 4 seconds
+    spawn(function()
+        wait(4)
+        updateStatus("Ready to connect")
+        jobBox.Text = ""
+    end)
+end)
+
+-- Variables for autojoiner functionality
+local isConnected = false
+local socket = nil
+local isAutojoinerEnabled = false
+local httpPolling = false
+
+-- Function to update status display
+local function updateStatus(message)
+    statusLabel.Text = message
+end
+
+-- BACKUP: Ultra-fast HTTP polling system for real-time Job ID detection
+local function startHttpPolling()
+    httpPolling = true
+    spawn(function()
+        updateStatus("⚡ REAL-TIME clipboard mode active!")
+        local lastClipboard = ""
+        
+        while httpPolling and isConnected do
+            local success, clipboard = pcall(function()
+                -- Try multiple clipboard methods for compatibility
+                if getclipboard then
+                    return getclipboard()
+                elseif Clipboard and Clipboard.get then
+                    return Clipboard.get()
+                elseif setclipboard then
+                    -- If we have setclipboard, we likely have getclipboard too
+                    return ""
+                else
+                    return ""
+                end
+            end)
+            
+            if success and clipboard and clipboard ~= lastClipboard and clipboard ~= "" then
+                -- Check if it's a valid Job ID (UUID format)
+                local jobId = string.match(clipboard, "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x")
+                if jobId then
+                    lastClipboard = clipboard
+                    jobBox.Text = jobId
+                    updateStatus("⚡ INSTANT Job ID detected: " .. jobId:sub(1,8) .. "...")
+                    
+                    if isAutojoinerEnabled then
+                        updateStatus("🚀 ZERO DELAY - Teleporting NOW!")
+                        
+                        spawn(function()
+                            local teleportSuccess, teleportErr = pcall(function()
+                                TeleportService:TeleportToPlaceInstance(PLACE_ID, jobId, Players.LocalPlayer)
+                            end)
+                            
+                            if not teleportSuccess then
+                                updateStatus("❌ Teleport failed: " .. tostring(teleportErr))
+                            else
+                                updateStatus("✅ REAL-TIME joining server...")
+                            end
+                        end)
+                    end
+                end
+            end
+            
+            wait(0.05) -- 50ms polling - ULTRA FAST for zero delay
+        end
+    end)
+end
+
+-- Function to connect to WebSocket server
+local function connectToServer()
+    if socket then
+        pcall(function() socket:close() end)
+        socket = nil
+    end
+    
+    httpPolling = false
+    
+    spawn(function()
+        local success, err = pcall(function()
+            updateStatus("🔄 Connecting to server...")
+            
+            -- Try WebSocket connection using syn library or other methods
+            local ws_url = "ws://localhost:8765"
+            
+            -- Check if syn.websocket is available (Synapse X)
+            if syn and syn.websocket then
+                socket = syn.websocket.connect(ws_url)
+                updateStatus("✅ Synapse Connected! Waiting for Copy Job ID...")
+            -- Check if WebSocket global is available
+            elseif WebSocket then
+                socket = WebSocket.connect(ws_url)
+                updateStatus("✅ Connected! Waiting for Copy Job ID...")
+            else
+                -- Fallback to HTTP polling mode
+                isConnected = true
+                updateStatus("⚡ HTTP Real-time mode!")
+                startHttpPolling()
+                
+                -- Update button state for HTTP mode
+                toggleIcon.Text = "❌"
+                toggleText.Text = "DISCONNECT"
+                toggleGradient.Color = ColorSequence.new{
+                    ColorSequenceKeypoint.new(0, Color3.fromRGB(45, 255, 85)),
+                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(65, 255, 105)),
+                    ColorSequenceKeypoint.new(1, Color3.fromRGB(85, 255, 125))
+                }
+                toggleStroke.Color = Color3.fromRGB(50, 255, 100)
+                return -- Exit early for HTTP mode
+            end
+            
+            isConnected = true
+            
+            -- Update button to show connected state for WebSocket mode
+            toggleIcon.Text = "❌"
+            toggleText.Text = "DISCONNECT"
+            toggleGradient.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(45, 255, 85)),
+                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(65, 255, 105)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(85, 255, 125))
+            }
+            toggleStroke.Color = Color3.fromRGB(50, 255, 100)
+            
+            -- REAL-TIME message handler for INSTANT Job ID processing
+            socket.OnMessage:Connect(function(message)
+                local jobId = message
+                if jobId and jobId ~= "" then
+                    jobBox.Text = jobId
+                    updateStatus("⚡ INSTANT WebSocket Job ID!")
+                    
+                    if isAutojoinerEnabled then
+                        updateStatus("🚀 ZERO DELAY - Joining NOW!")
+                        
+                        -- IMMEDIATE teleport with no delays
+                        spawn(function()
+                            local teleportSuccess, teleportErr = pcall(function()
+                                TeleportService:TeleportToPlaceInstance(PLACE_ID, jobId, Players.LocalPlayer)
+                            end)
+                            
+                            if not teleportSuccess then
+                                updateStatus("❌ Join failed: " .. tostring(teleportErr))
+                            else
+                                updateStatus("✅ REAL-TIME joining server...")
+                            end
+                        end)
+                    end
+                end
+            end)
+            
+            socket.OnClose:Connect(function()
+                isConnected = false
+                isAutojoinerEnabled = false
+                httpPolling = false
+                updateButtonState()
+                updateStatus("❌ Connection lost!")
+            end)
+            
+        end)
+        
+        if not success and not isConnected then
+            isConnected = false
+            httpPolling = false
+            toggleIcon.Text = "⚡"
+            toggleText.Text = "CONNECT"
+            toggleGradient.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 20, 20)),
+                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 40, 40)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 60, 60))
+            }
+            toggleStroke.Color = Color3.fromRGB(40, 40, 40)
+            toggleButton.BackgroundTransparency = 0.5
+            updateStatus("❌ Connection failed: " .. tostring(err))
+        end
+    end)
+end
+
+-- Function to disconnect from server
+local function disconnectFromServer()
+    if socket then
+        pcall(function() socket:close() end)
+        socket = nil
+    end
+    httpPolling = false
+    isConnected = false
+    isAutojoinerEnabled = false
+    updateButtonState()
+    updateStatus("⚪ Disconnected")
+end
+
+-- GUI Event Handlers
+closeBtn.MouseButton1Click:Connect(function()
+    disconnectFromServer()
+    gui:Destroy()
+end)
+
+toggleButton.MouseButton1Click:Connect(function()
+    if not isConnected then
+        -- Immediately update visual state to show connecting
+        toggleIcon.Text = "🔄"
+        toggleText.Text = "CONNECTING..."
+        toggleGradient.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 165, 0)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 185, 20)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 205, 40))
+        }
+        toggleStroke.Color = Color3.fromRGB(255, 165, 0)
+        
+        isAutojoinerEnabled = true
+        connectToServer()
+    else
+        -- Immediately update visual state to show disconnecting
+        toggleIcon.Text = "⚡"
+        toggleText.Text = "CONNECT"
+        toggleGradient.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 20, 20)),   -- Dark black
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 40, 40)), -- Medium black
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 60, 60))    -- Light black/gray
+        }
+        toggleStroke.Color = Color3.fromRGB(80, 80, 80)  -- Gray glow
+        toggleButton.BackgroundTransparency = 0.5  -- Transparent
+        
+        disconnectFromServer()
+    end
+end)
+
+manualHopBtn.MouseButton1Click:Connect(function()
+    updateStatus("🔄 Manual server hopping...")
+    local success, err = pcall(function()
+        TeleportService:Teleport(109983668079237, Players.LocalPlayer)
+    end)
+    
+    if not success then
+        updateStatus("❌ Manual hop failed: " .. tostring(err))
+    else
+        updateStatus("✅ Server hopping...")
+    end
+end)
+
+-- Initialize with improved status
+updateStatus("🚀 KONTOL HUB - Ready for ZERO DELAY joining!")
+print("🎯 KONTOL HUB AUTOJOINER - ULTRA FAST Edition Loaded!")
